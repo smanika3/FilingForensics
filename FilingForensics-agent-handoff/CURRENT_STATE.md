@@ -4,11 +4,11 @@ This file is the handoff memory. Update it after every stage and every important
 
 ## Overall status
 
-- Current stage: `STAGE-2`
+- Current stage: `STAGE-3`
 - Stage 0: `DONE`
 - Stage 1: `DONE`
-- Stage 2: `IN_PROGRESS`
-- Stage 3: `PENDING`
+- Stage 2: `DONE`
+- Stage 3: `IN_PROGRESS`
 - Stage 4: `OPTIONAL_PENDING`
 - Stage 5: `PENDING`
 
@@ -19,8 +19,8 @@ Stage 4 is optional and must not block the localhost MVP.
 ## Last checkpoint
 
 - Date/time: 2026-10-02
-- Commit: `stage-1: add evidence fixtures and deterministic calculations`
-- Summary: Evidence models, verified Apple fixtures (incl. real MD&A excerpt), deterministic revenue change with validation (missing/duplicate/non-USD/segment/non-adjacent), 10 unit tests passing.
+- Commit: `stage-2: add local Ollama evidence synthesis`
+- Summary: src/ollama_client.py + src/answer_schema.py; structured fallback on every failure; live qwen3.5:2b smoke passes (~14s, valid JSON). 18 tests pass, 1 live test skipped unless FF_LIVE_OLLAMA=1.
 
 ## Verified external facts
 
@@ -30,7 +30,7 @@ Stage 4 is optional and must not block the localhost MVP.
 - Verified MD&A filing accession: `0000320193-23-000106`
 - FY2022 revenue: `394328000000 USD`, period `2021-09-26` through `2022-09-24`, accession `0000320193-24-000123`
 - FY2023 revenue: `383285000000 USD`, period `2022-09-25` through `2023-09-30`, accession `0000320193-25-000079`
-- Deterministic change: `-11043000000 USD`, approximately `-2.8%`
+- Deterministic change: `-11043000000 USD`, approximately `-2.8%` (exact -2.8005%)
 - Ollama model: `qwen3.5:2b`
 - Ollama endpoint: `http://127.0.0.1:11434`
 - Ollama requires `think: false` for the fast response path.
@@ -42,7 +42,8 @@ Stage 4 is optional and must not block the localhost MVP.
 - Local Ollama smoke test passed in approximately 1.35 seconds.
 - Python 3.9.6 (no 3.10+ syntax). `py_compile app.py src/config.py` passed.
 - Virtualenv: `.venv/` (gitignored); run `.venv/bin/pip install -r requirements.txt` to recreate.
-- `.venv/bin/python -m pytest -q` → 10 passed.
+- `.venv/bin/python -m pytest -q` → 18 passed, 1 skipped.
+- Live Ollama smoke (`FF_LIVE_OLLAMA=1`): ok, ~13-14s, num_predict 700 needed to avoid truncated JSON.
 - Streamlit app: placeholder only.
 
 ## Blockers and decisions
@@ -55,4 +56,4 @@ Stage 4 is optional and must not block the localhost MVP.
 
 ## Next action
 
-Read and implement `STAGE-2-OLLAMA.md`.
+Read and implement `STAGE-3-STREAMLIT.md`.

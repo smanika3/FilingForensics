@@ -52,7 +52,14 @@ stage-2: add local Ollama evidence synthesis
 
 ## Implementation status
 
-- Status: `PENDING`
-- Last agent: none
-- Notes: Ollama was externally smoke-tested before coding and passed with `think: false`.
-- Next action: implement the local model adapter.
+- Status: `DONE`
+- Date/time: 2026-10-02
+- Last agent: Cortex Code (claude-opus-5-5)
+- Files created: src/answer_schema.py (tolerant JSON parse -> ModelAnswer), src/ollama_client.py (build_prompt, synthesize), tests/test_ollama_client.py
+- Request: think=false, format=json, temperature 0, num_predict 700, timeout from OLLAMA_TIMEOUT_SECONDS (default 30s). Non-localhost hosts are refused without a request.
+- Commands: `.venv/bin/python -m pytest -q` -> 18 passed, 1 skipped (live). `FF_LIVE_OLLAMA=1 .venv/bin/python -m pytest -q -s tests/test_ollama_client.py::test_live_ollama_smoke` -> passed twice, ok=True, latency 14.2s / 13.3s.
+- Response behavior: model echoes the deterministic numbers and cites the ADSH IDs. With num_predict 400 the JSON was truncated (parse failed, handled as fallback); fixed by 700 + brevity instruction.
+- Fallback behavior: timeout, connection error, HTTP error, empty output, malformed JSON, and missing fields all return ModelAnswer(ok=False, error=..., raw=...) - never raise.
+- Correction: exact percent change is -2.8005% (-11043/394328); handoff's "-2.8007%" is within the Stage 1 test tolerance.
+- Known limitations: ~14s latency on qwen3.5:2b with full evidence prompt; app should show a spinner. Model may restate rather than add insight.
+- Next action: Stage 3 (Streamlit UI).
