@@ -4,13 +4,13 @@ This file is the handoff memory. Update it after every stage and every important
 
 ## Overall status
 
-- Current stage: `STAGE-5`
+- Current stage: `COMPLETE` (MVP; Stage 4 optional)
 - Stage 0: `DONE`
 - Stage 1: `DONE`
 - Stage 2: `DONE`
 - Stage 3: `DONE`
 - Stage 4: `OPTIONAL_PENDING`
-- Stage 5: `IN_PROGRESS`
+- Stage 5: `DONE`
 
 Critical path: `STAGE-0 → STAGE-1 → STAGE-2 → STAGE-3 → STAGE-5`
 
@@ -19,8 +19,18 @@ Stage 4 is optional and must not block the localhost MVP.
 ## Last checkpoint
 
 - Date/time: 2026-10-02
-- Commit: `stage-3: build fixture-first Streamlit evidence UI`
-- Summary: Full fixture-first Streamlit UI verified in browser with live qwen3.5:2b (14.3s). 21 tests pass (incl. 3 AppTest UI tests for fixture, model failure, live-mode error). Stage 4 left OPTIONAL_PENDING.
+- Commit: `stage-5: finalize demo and submission evidence`
+- Summary: MVP complete. README with run/demo instructions and five-case smoke checklist. Clean-shell launch, real Ollama-down fallback, and secret scan verified.
+
+## Demo instructions
+
+```bash
+.venv/bin/pip install -r requirements.txt   # if .venv missing: python3 -m venv .venv first
+.venv/bin/python -m pytest -q
+.venv/bin/streamlit run app.py              # http://localhost:8501, fixture mode, click Analyze
+```
+
+Demo sequence and limitations: see root `README.md`.
 
 ## Verified external facts
 
@@ -57,4 +67,4 @@ Stage 4 is optional and must not block the localhost MVP.
 
 ## Next action
 
-Read and implement `STAGE-5-DEMO-QA.md` (Stage 4 optional, skip unless requested).
+MVP is complete. Only implement `STAGE-4-SNOWFLAKE.md` (optional live mode) if the user explicitly requests it; it must not break fixture mode.

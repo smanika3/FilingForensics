@@ -57,7 +57,17 @@ stage-5: finalize demo and submission evidence
 
 ## Implementation status
 
-- Status: `PENDING`
-- Last agent: none
-- Notes: not started
-- Next action: run final QA after the MVP is complete.
+- Status: `DONE`
+- Date/time: 2026-10-02
+- Last agent: Cortex Code (claude-opus-5-5)
+- Files: README.md (run instructions, architecture, CoCo/Snowflake/model roles, five-case smoke checklist, demo sequence, limitations)
+- Commands/results:
+  - `.venv/bin/python -m pytest -q` -> 21 passed, 1 skipped
+  - Clean shell (`env -i`) `streamlit run app.py --server.port 8502` -> HTTP 200, `/_stcore/health` ok
+  - Real Ollama-unavailable (port 11999) -> structured fallback `Ollama unavailable ...`, no exception
+  - Browser run with live qwen3.5:2b (Stage 3) -> full answer/evidence/provenance, 14.3s
+  - Secret scan of tracked files -> none; no .env, logs, or CSVs tracked
+- Five-case checklist: all five covered (see README table).
+- Live Snowflake mode: not available (Stage 4 optional, not implemented); graceful error verified.
+- Known limitations: see README.
+- Next action: MVP complete. Optional: Stage 4 live Snowflake mode only if requested.
