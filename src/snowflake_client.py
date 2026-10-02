@@ -4,49 +4,64 @@ Auth options (first match wins):
   1. SNOWFLAKE_CONNECTION_NAME -> named connection in ~/.snowflake/connections.toml (no secrets in env/repo)
   2. SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER, with SNOWFLAKE_PASSWORD or SNOWFLAKE_AUTHENTICATOR
      (defaults to externalbrowser when no password is set)
+
+Facts: each fiscal year's value comes from that year's own 10-K (SEC_CORPORATE_REPORT_ATTRIBUTES, clean totals only).
+Narrative: MD&A (PART II, Item 7) from the newest requested year's 10-K, retrieved in a separate query.
 """
 import os
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from src.fixtures import APPLE_CIK
+from src.companies import Company
+from src.mdna import blocks_to_text, relevant_excerpt
+from src.metrics import METRICS, Metric
 from src.models import MetricEvidence, TextEvidence
 from src.retrieval import EvidenceBundle, LiveModeUnavailable
 
-APPLE_MDNA_ADSH = "0000320193-23-000106"
 MDNA_ITEM = "PART II, Item 7"
-REVENUE_TAG = "RevenueFromContractWithCustomerExcludingAssessedTax"
-REVENUE_VARIABLE = "NET SALES | ANNUAL"
-TEXT_LIMIT = 8000
-
+TEXT_LIMIT = 200000
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
-TEXT_SQL = """SELECT CIK, ADSH, FORM_TYPE, FILED_DATE, ITEM_NUMBER, ITEM_TITLE,
-       LEFT(PLAINTEXT_CONTENT, %(text_limit)s) AS TEXT
-FROM {db}.{schema}.SEC_CORPORATE_REPORT_ITEM_ATTRIBUTES
-WHERE CIK = %(cik)s AND ADSH = %(adsh)s AND ITEM_NUMBER = %(item)s"""
+LATEST_YEAR_SQL = """SELECT MAX(TRY_TO_NUMBER(TO_VARCHAR(FISCAL_YEAR))) AS FISCAL_YEAR
+FROM {db}.{schema}.SEC_CORPORATE_REPORT_INDEX
+WHERE CIK = %(cik)s AND FORM_TYPE = '10-K'"""
 
-METRIC_SQL = """WITH filings AS (
-    SELECT DISTINCT ADSH, FORM_TYPE, FILED_DATE
+FACTS_SQL = """WITH filings AS (
+    SELECT DISTINCT ADSH, FORM_TYPE, FILED_DATE, TRY_TO_NUMBER(TO_VARCHAR(FISCAL_YEAR)) AS FISCAL_YEAR
     FROM {db}.{schema}.SEC_CORPORATE_REPORT_INDEX
     WHERE CIK = %(cik)s AND FORM_TYPE = '10-K'
+      AND TRY_TO_NUMBER(TO_VARCHAR(FISCAL_YEAR)) IN (%(old_year)s, %(new_year)s)
 )
-SELECT m.ADSH, f.FORM_TYPE, f.FILED_DATE,
-       TRY_TO_NUMBER(TO_VARCHAR(m.FISCAL_YEAR)) AS FISCAL_YEAR,
-       m.FISCAL_PERIOD, m.VARIABLE_NAME, m.VALUE, m.UNIT,
-       m.PERIOD_START_DATE, m.PERIOD_END_DATE, m.BUSINESS_SEGMENT, m.BUSINESS_SUBSEGMENT
-FROM {db}.{schema}.SEC_METRICS_TIMESERIES m
-JOIN filings f ON m.ADSH = f.ADSH
-WHERE m.CIK = %(cik)s
-  AND m.TAG = %(tag)s
-  AND m.FISCAL_PERIOD = 'FY'
-  AND TRY_TO_NUMBER(TO_VARCHAR(m.FISCAL_YEAR)) IN (%(old_year)s, %(new_year)s)
-  AND m.VARIABLE_NAME = %(variable)s
-  AND m.BUSINESS_SEGMENT IS NULL
-  AND m.BUSINESS_SUBSEGMENT IS NULL
-ORDER BY FISCAL_YEAR"""
+SELECT DISTINCT a.ADSH, f.FORM_TYPE, f.FILED_DATE, f.FISCAL_YEAR, a.TAG, a.MEASURE_DESCRIPTION,
+       a.UNIT, a.VALUE, a.PERIOD_START_DATE, a.PERIOD_END_DATE, a.COVERED_QTRS
+FROM {db}.{schema}.SEC_CORPORATE_REPORT_ATTRIBUTES a
+JOIN filings f ON a.ADSH = f.ADSH
+WHERE a.CIK = %(cik)s
+  AND a.TAG IN ({tag_binds})
+  AND a.METADATA IS NULL
+  AND a.COVERED_QTRS = %(covered_qtrs)s
+ORDER BY f.FISCAL_YEAR, a.PERIOD_END_DATE"""
+
+TEXT_SQL = """SELECT r.CIK, r.ADSH, r.FORM_TYPE, r.FILED_DATE, i.ITEM_NUMBER, i.ITEM_TITLE,
+       LEFT(i.PLAINTEXT_CONTENT, %(text_limit)s) AS TEXT
+FROM {db}.{schema}.SEC_CORPORATE_REPORT_INDEX r
+JOIN {db}.{schema}.SEC_CORPORATE_REPORT_ITEM_ATTRIBUTES i ON i.ADSH = r.ADSH AND i.CIK = r.CIK
+WHERE r.CIK = %(cik)s AND r.FORM_TYPE = '10-K'
+  AND TRY_TO_NUMBER(TO_VARCHAR(r.FISCAL_YEAR)) = %(fiscal_year)s
+  AND i.ITEM_NUMBER = %(item)s
+LIMIT 1"""
+
+LOOKUP_SQL = """SELECT DISTINCT s.CIK, s.COMPANY_NAME, c.PRIMARY_TICKER
+FROM {db}.{schema}.SEC_CIK_INDEX s
+LEFT JOIN {db}.{schema}.COMPANY_INDEX c ON c.CIK = s.CIK
+WHERE s.SEC_FILER_CATEGORY IS NOT NULL
+  AND (UPPER(c.PRIMARY_TICKER) = UPPER(%(text)s) OR s.COMPANY_NAME ILIKE %(pattern)s)
+ORDER BY LENGTH(s.COMPANY_NAME)
+LIMIT 6"""
+
+_CONN: Dict[Tuple, Any] = {}
 
 
 def _identifier(value: str, name: str) -> str:
@@ -76,17 +91,59 @@ def connection_params(env: Mapping[str, str] = os.environ) -> Dict[str, Any]:
     return params
 
 
+def _db_schema(env: Mapping[str, str]) -> Tuple[str, str]:
+    return (
+        _identifier(env.get("SNOWFLAKE_DATABASE") or "SNOWFLAKE_PUBLIC_DATA_FREE", "SNOWFLAKE_DATABASE"),
+        _identifier(env.get("SNOWFLAKE_SCHEMA") or "PUBLIC_DATA_FREE", "SNOWFLAKE_SCHEMA"),
+    )
+
+
+def _connect(env: Mapping[str, str]):
+    """Reuse one connection per credential set so OAuth/SSO doesn't prompt on every query."""
+    params = connection_params(env)
+    key = tuple(sorted((k, str(v)) for k, v in params.items() if k != "password"))
+    conn = _CONN.get(key)
+    if conn is not None and not conn.is_closed():
+        return conn
+    try:
+        import snowflake.connector
+
+        conn = snowflake.connector.connect(**params)
+    except ImportError as exc:
+        raise LiveModeUnavailable("snowflake-connector-python is not installed. Switch to fixture mode.") from exc
+    except Exception as exc:  # connector raises many error types; surface them all as recoverable
+        raise LiveModeUnavailable(f"Could not connect to Snowflake: {exc}. Switch to fixture mode.") from exc
+    _CONN[key] = conn
+    return conn
+
+
+def _query(conn, sql: str, binds: Dict[str, Any]) -> List[Dict[str, Any]]:
+    from snowflake.connector import DictCursor
+
+    try:
+        with conn.cursor(DictCursor) as cur:
+            cur.execute(sql, binds)
+            return list(cur.fetchall())
+    except Exception as exc:
+        raise LiveModeUnavailable(f"Snowflake query failed: {exc}. Switch to fixture mode.") from exc
+
+
 def _iso(value: Any) -> str:
     if isinstance(value, (date, datetime)):
         return value.isoformat()[:10]
     return str(value)[:10] if value is not None else ""
 
 
-def _int(value: Any) -> int:
+def _number(value: Any):
     number = Decimal(str(value))
-    if number != number.to_integral_value():
-        raise ValueError(f"Expected whole-dollar value, got {value!r}")
-    return int(number)
+    return int(number) if number == number.to_integral_value() else float(number)
+
+
+def _int(value: Any) -> int:
+    number = _number(value)
+    if not isinstance(number, int):
+        raise ValueError(f"Expected whole number, got {value!r}")
+    return number
 
 
 def normalize_text(row: Mapping[str, Any]) -> TextEvidence:
@@ -101,57 +158,105 @@ def normalize_text(row: Mapping[str, Any]) -> TextEvidence:
     )
 
 
-def normalize_metric(row: Mapping[str, Any]) -> MetricEvidence:
-    return MetricEvidence(
-        fiscal_year=_int(row["FISCAL_YEAR"]),
-        value=_int(row["VALUE"]),
-        unit=str(row["UNIT"]),
-        period_start=_iso(row["PERIOD_START_DATE"]),
-        period_end=_iso(row["PERIOD_END_DATE"]),
-        adsh=str(row["ADSH"]),
-        filed_date=_iso(row["FILED_DATE"]),
-        variable_name=str(row["VARIABLE_NAME"]),
-        business_segment=row.get("BUSINESS_SEGMENT"),
-        business_subsegment=row.get("BUSINESS_SUBSEGMENT"),
+def normalize_facts(rows: Sequence[Mapping[str, Any]], metric: Metric, years: Sequence[int]) -> List[MetricEvidence]:
+    """One row per fiscal year: that year's own 10-K, its latest period, first tag (by priority) present.
+
+    Identical duplicate rows are collapsed; conflicting values are kept so validation rejects them.
+    """
+    by_year: Dict[int, List[Mapping[str, Any]]] = {}
+    for row in rows:
+        by_year.setdefault(_int(row["FISCAL_YEAR"]), []).append(row)
+    out: List[MetricEvidence] = []
+    for year in years:
+        year_rows = by_year.get(year, [])
+        tag = next((t for t in metric.tags if any(r["TAG"] == t for r in year_rows)), None)
+        if tag is None:
+            continue
+        tagged = [r for r in year_rows if r["TAG"] == tag]
+        latest_end = max(_iso(r["PERIOD_END_DATE"]) for r in tagged)
+        current = [r for r in tagged if _iso(r["PERIOD_END_DATE"]) == latest_end]
+        seen = set()
+        for r in current:
+            value = _number(r["VALUE"])
+            if value in seen:
+                continue
+            seen.add(value)
+            out.append(
+                MetricEvidence(
+                    fiscal_year=year,
+                    value=value,
+                    unit=str(r["UNIT"]),
+                    period_start="" if metric.kind == "instant" else _iso(r["PERIOD_START_DATE"]),
+                    period_end=latest_end,
+                    adsh=str(r["ADSH"]),
+                    filed_date=_iso(r["FILED_DATE"]),
+                    variable_name=f"{tag} | {r.get('MEASURE_DESCRIPTION') or metric.label}",
+                )
+            )
+    return out
+
+
+def latest_fiscal_year(cik: str, env: Mapping[str, str] = os.environ) -> int:
+    db, schema = _db_schema(env)
+    rows = _query(_connect(env), LATEST_YEAR_SQL.format(db=db, schema=schema), {"cik": cik})
+    if not rows or rows[0]["FISCAL_YEAR"] is None:
+        raise LiveModeUnavailable("No 10-K filings with a fiscal year were found for this company.")
+    return _int(rows[0]["FISCAL_YEAR"])
+
+
+def lookup_companies(text: str, env: Mapping[str, str] = os.environ) -> List[Company]:
+    """Quick read-only check that a company exists (ticker exact match or name prefix)."""
+    db, schema = _db_schema(env)
+    rows = _query(
+        _connect(env), LOOKUP_SQL.format(db=db, schema=schema), {"text": text.strip(), "pattern": f"{text.strip()}%"}
     )
+    return [Company(str(r["CIK"]), str(r["COMPANY_NAME"]), str(r.get("PRIMARY_TICKER") or "")) for r in rows]
 
 
-def _query(conn, sql: str, binds: Dict[str, Any]) -> List[Dict[str, Any]]:
-    from snowflake.connector import DictCursor
+def fetch_live_evidence(
+    cik: str,
+    company_name: str,
+    metric_key: str,
+    years: Optional[Tuple[int, int]] = None,
+    env: Mapping[str, str] = os.environ,
+) -> EvidenceBundle:
+    """Run independent read-only queries (facts, then MD&A) and normalize. Raises LiveModeUnavailable on failure."""
+    metric = METRICS[metric_key]
+    db, schema = _db_schema(env)
+    conn = _connect(env)
+    if years is None:
+        new_year = latest_fiscal_year(cik, env)
+        years = (new_year - 1, new_year)
+    old_year, new_year = years
+    tag_binds = ", ".join(f"%(tag{i})s" for i in range(len(metric.tags)))
+    facts_sql = FACTS_SQL.format(db=db, schema=schema, tag_binds=tag_binds)
+    fact_binds: Dict[str, Any] = {
+        "cik": cik, "old_year": old_year, "new_year": new_year,
+        "covered_qtrs": 0 if metric.kind == "instant" else 4,
+        **{f"tag{i}": t for i, t in enumerate(metric.tags)},
+    }
+    text_sql = TEXT_SQL.format(db=db, schema=schema)
+    text_binds = {"cik": cik, "fiscal_year": new_year, "item": MDNA_ITEM, "text_limit": TEXT_LIMIT}
 
-    with conn.cursor(DictCursor) as cur:
-        cur.execute(sql, binds)
-        return list(cur.fetchall())
-
-
-def fetch_live_evidence(old_year: int = 2022, new_year: int = 2023, env: Mapping[str, str] = os.environ) -> EvidenceBundle:
-    """Run the two independent read-only queries and normalize them. Raises LiveModeUnavailable on any failure."""
-    params = connection_params(env)
-    db = _identifier(env.get("SNOWFLAKE_DATABASE") or "SNOWFLAKE_PUBLIC_DATA_FREE", "SNOWFLAKE_DATABASE")
-    schema = _identifier(env.get("SNOWFLAKE_SCHEMA") or "PUBLIC_DATA_FREE", "SNOWFLAKE_SCHEMA")
-    text_sql, metric_sql = TEXT_SQL.format(db=db, schema=schema), METRIC_SQL.format(db=db, schema=schema)
-    text_binds = {"cik": APPLE_CIK, "adsh": APPLE_MDNA_ADSH, "item": MDNA_ITEM, "text_limit": TEXT_LIMIT}
-    metric_binds = {"cik": APPLE_CIK, "tag": REVENUE_TAG, "variable": REVENUE_VARIABLE, "old_year": old_year, "new_year": new_year}
+    fact_rows = _query(conn, facts_sql, fact_binds)
+    text_rows = _query(conn, text_sql, text_binds)
     try:
-        import snowflake.connector
-
-        conn = snowflake.connector.connect(**params)
-    except ImportError as exc:
-        raise LiveModeUnavailable("snowflake-connector-python is not installed. Switch to fixture mode.") from exc
-    except Exception as exc:  # connector raises many error types; surface them all as recoverable
-        raise LiveModeUnavailable(f"Could not connect to Snowflake: {exc}. Switch to fixture mode.") from exc
-    try:
-        text_rows = _query(conn, text_sql, text_binds)
-        metric_rows = _query(conn, metric_sql, metric_binds)
-    except Exception as exc:
-        raise LiveModeUnavailable(f"Snowflake query failed: {exc}. Switch to fixture mode.") from exc
-    finally:
-        conn.close()
-    if len(text_rows) != 1:
-        raise LiveModeUnavailable(f"Expected 1 MD&A row, got {len(text_rows)}. Switch to fixture mode.")
-    try:
-        text = normalize_text(text_rows[0])
-        metrics = [normalize_metric(r) for r in metric_rows]
+        metrics = normalize_facts(fact_rows, metric, years)
+        text = normalize_text(text_rows[0]) if text_rows else None
     except (KeyError, ValueError) as exc:
         raise LiveModeUnavailable(f"Unexpected live row shape: {exc}. Switch to fixture mode.") from exc
-    return EvidenceBundle(mode="live", text=text, metrics=metrics, sql=[text_sql, metric_sql], text_rows=len(text_rows))
+
+    notes: List[str] = []
+    blocks: list = []
+    if text is None:
+        notes.append(f"No MD&A section found for the FY{new_year} 10-K; showing financial facts only.")
+    else:
+        blocks = relevant_excerpt(text.text, metric.mdna_keywords)
+        if not blocks:
+            notes.append("MD&A found, but no passage mentions this metric; showing the opening of the section.")
+            blocks = relevant_excerpt(text.text, [""], max_chars=1500)
+        text = TextEvidence(**{**text.__dict__, "text": blocks_to_text(blocks)})
+    return EvidenceBundle(
+        mode="live", text=text, metrics=metrics, sql=[facts_sql, text_sql], text_rows=len(text_rows),
+        company_name=company_name, cik=cik, metric_key=metric_key, years=years, text_blocks=blocks, notes=notes,
+    )

@@ -4,38 +4,55 @@ import requests
 from streamlit.testing.v1 import AppTest
 
 
-def _app():
-    at = AppTest.from_file("app.py", default_timeout=30)
-    at.run()
+def _ask(question, mode="fixture", use_model=False, post_effect=requests.ConnectionError()):
+    with mock.patch("src.ollama_client.requests.post", side_effect=post_effect):
+        at = AppTest.from_file("app.py", default_timeout=30)
+        at.run()
+        at.session_state["mode"] = mode
+        at.sidebar.toggle[0].set_value(use_model)
+        at.text_input(key="q").input(question)
+        at.button(key="send").click().run()
     return at
 
 
-def test_fixture_mode_without_model():
-    at = _app()
-    at.sidebar.toggle[0].set_value(False)
-    at.sidebar.button[0].click().run()
+def _page(at):
+    return " ".join(m.value for m in at.markdown)
+
+
+def test_landing_shows_centered_box_and_suggestions():
+    at = AppTest.from_file("app.py", default_timeout=30)
+    at.run()
     assert not at.exception
-    page = " ".join(m.value for m in at.markdown)
-    assert "Revenue decreased by $11.04B, or 2.8%, from FY2022 to FY2023." in page
-    assert "0000320193-23-000106" in page and "0000320193-25-000079" in page
-    assert any("Fixture mode" in i.value for i in at.info)
+    assert at.text_input(key="q") is not None
+    assert any("Fixture mode" in c.value for c in at.caption)
+
+
+def test_fixture_question_renders_answer_evidence_and_tables():
+    at = _ask("How did Apple's revenue change from FY2022 to FY2023?")
+    assert not at.exception
+    page = _page(at)
+    assert "Apple Inc. revenue decreased by \\$11.04B, or 2.8%, from FY2022 to FY2023." in page
+    assert "0000320193-23-000106" in page
+    assert len(at.dataframe) >= 2  # metric table + MD&A table
+    assert "Question understood" in page and "Change calculated" in page
 
 
 def test_model_failure_does_not_crash():
-    with mock.patch("src.ollama_client.requests.post", side_effect=requests.ConnectionError()):
-        at = _app()
-        at.sidebar.button[0].click().run()
+    at = _ask("Apple revenue 2022 to 2023", use_model=True)
     assert not at.exception
     assert any("Model explanation unavailable" in w.value for w in at.warning)
 
 
-def test_live_mode_fails_gracefully(monkeypatch):
-    for key in ("SNOWFLAKE_CONNECTION_NAME", "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"):
-        monkeypatch.delenv(key, raising=False)
-    at = _app()
-    at.session_state["mode"] = "live"
-    at.sidebar.button[0].click().run()
+def test_unknown_company_in_fixture_mode_is_recoverable():
+    at = _ask("What was Costco's revenue in 2023?")
+    assert not at.exception
+    assert any("live mode" in e.value for e in at.error)
+
+
+def test_live_mode_fails_gracefully_and_recovers():
+    at = _ask("Apple revenue 2022 to 2023", mode="live")
     assert not at.exception
     assert any("fixture mode" in e.value for e in at.error)
-    at.button[0].click().run()  # "Switch to fixture mode" recovers
+    recover = next(b for b in at.button if "Switch to fixture mode" in b.label)
+    recover.click().run()
     assert at.session_state["mode"] == "fixture" and not at.exception
