@@ -4,13 +4,13 @@ This file is the handoff memory. Update it after every stage and every important
 
 ## Overall status
 
-- Current stage: `STAGE-3`
+- Current stage: `STAGE-5`
 - Stage 0: `DONE`
 - Stage 1: `DONE`
 - Stage 2: `DONE`
-- Stage 3: `IN_PROGRESS`
+- Stage 3: `DONE`
 - Stage 4: `OPTIONAL_PENDING`
-- Stage 5: `PENDING`
+- Stage 5: `IN_PROGRESS`
 
 Critical path: `STAGE-0 → STAGE-1 → STAGE-2 → STAGE-3 → STAGE-5`
 
@@ -19,8 +19,8 @@ Stage 4 is optional and must not block the localhost MVP.
 ## Last checkpoint
 
 - Date/time: 2026-10-02
-- Commit: `stage-2: add local Ollama evidence synthesis`
-- Summary: src/ollama_client.py + src/answer_schema.py; structured fallback on every failure; live qwen3.5:2b smoke passes (~14s, valid JSON). 18 tests pass, 1 live test skipped unless FF_LIVE_OLLAMA=1.
+- Commit: `stage-3: build fixture-first Streamlit evidence UI`
+- Summary: Full fixture-first Streamlit UI verified in browser with live qwen3.5:2b (14.3s). 21 tests pass (incl. 3 AppTest UI tests for fixture, model failure, live-mode error). Stage 4 left OPTIONAL_PENDING.
 
 ## Verified external facts
 
@@ -42,9 +42,10 @@ Stage 4 is optional and must not block the localhost MVP.
 - Local Ollama smoke test passed in approximately 1.35 seconds.
 - Python 3.9.6 (no 3.10+ syntax). `py_compile app.py src/config.py` passed.
 - Virtualenv: `.venv/` (gitignored); run `.venv/bin/pip install -r requirements.txt` to recreate.
-- `.venv/bin/python -m pytest -q` → 18 passed, 1 skipped.
+- `.venv/bin/python -m pytest -q` → 21 passed, 1 skipped.
 - Live Ollama smoke (`FF_LIVE_OLLAMA=1`): ok, ~13-14s, num_predict 700 needed to avoid truncated JSON.
-- Streamlit app: placeholder only.
+- Streamlit app: `.venv/bin/streamlit run app.py --server.port 8501` works; fixture mode verified end-to-end in browser.
+- Model citations tend to omit the MD&A ADSH; deterministic provenance section always lists all three accessions.
 
 ## Blockers and decisions
 
@@ -56,4 +57,4 @@ Stage 4 is optional and must not block the localhost MVP.
 
 ## Next action
 
-Read and implement `STAGE-3-STREAMLIT.md`.
+Read and implement `STAGE-5-DEMO-QA.md` (Stage 4 optional, skip unless requested).

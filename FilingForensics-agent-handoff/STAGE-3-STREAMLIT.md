@@ -45,7 +45,14 @@ stage-3: build fixture-first Streamlit evidence UI
 
 ## Implementation status
 
-- Status: `PENDING`
-- Last agent: none
-- Notes: not started
-- Next action: build the fixture-first page.
+- Status: `DONE`
+- Date/time: 2026-10-02
+- Last agent: Cortex Code (claude-opus-5-5)
+- Files: app.py (full UI), src/retrieval.py (EvidenceBundle; fixture mode; live raises LiveModeUnavailable -> visible error), tests/test_app.py (AppTest)
+- Launch: `.venv/bin/streamlit run app.py --server.port 8501` -> http://localhost:8501
+- Commands: `.venv/bin/python -m pytest -q` -> 21 passed, 1 skipped (live Ollama).
+- Manual checks (browser, live qwen3.5:2b): launches; fixture banner shown; answer "Revenue decreased by $11.04B, or 2.8%, from FY2022 to FY2023." with metrics and exact calc (-2.8005%); model explanation in 14.3s; metric table + bar chart; MD&A excerpt with ADSH/form/filed/item; provenance with both metric accessions, filed dates and periods; limitations + non-advice; debug shows mode, row counts, model, latency, raw JSON. No secrets displayed.
+- Failure checks (AppTest): Ollama ConnectionError -> warning + deterministic answer, no crash; live mode -> error telling user to switch to fixture mode.
+- Fixes: model text containing `$` rendered as LaTeX -> escaped via md(). `st.segmented_control` broke AppTest on Streamlit 1.50 -> used `st.radio(horizontal=True)`.
+- Known limitations: model citations usually list the two metric ADSHs but omit the MD&A ADSH (app's provenance section always shows all three). ~14s model latency (spinner shown). Live mode not implemented (Stage 4 optional).
+- Next action: Stage 5 (demo QA, README, smoke checklist).
