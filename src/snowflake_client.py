@@ -15,10 +15,13 @@ from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from src.companies import Company
+from src.config import _load_env
 from src.mdna import blocks_to_text, relevant_excerpt
 from src.metrics import METRICS, Metric
 from src.models import MetricEvidence, TextEvidence
 from src.retrieval import EvidenceBundle, LiveModeUnavailable
+
+_load_env()
 
 MDNA_ITEM = "PART II, Item 7"
 TEXT_LIMIT = 200000
@@ -76,8 +79,19 @@ def connection_params(env: Mapping[str, str] = os.environ) -> Dict[str, Any]:
     for key in ("warehouse", "role"):
         if env.get(f"SNOWFLAKE_{key.upper()}"):
             params[key] = env[f"SNOWFLAKE_{key.upper()}"]
-    if env.get("SNOWFLAKE_CONNECTION_NAME"):
-        params["connection_name"] = env["SNOWFLAKE_CONNECTION_NAME"]
+    conn_name = env.get("SNOWFLAKE_CONNECTION_NAME")
+    if not conn_name and env is os.environ and not (env.get("SNOWFLAKE_ACCOUNT") and env.get("SNOWFLAKE_USER")):
+        try:
+            from snowflake.connector.config_manager import CONFIG_MANAGER
+            conns = list(CONFIG_MANAGER["connections"].keys())
+            if "default" in conns:
+                conn_name = "default"
+            elif len(conns) == 1:
+                conn_name = conns[0]
+        except Exception:
+            pass
+    if conn_name:
+        params["connection_name"] = conn_name
         return params
     if not (env.get("SNOWFLAKE_ACCOUNT") and env.get("SNOWFLAKE_USER")):
         raise LiveModeUnavailable(

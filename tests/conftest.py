@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -43,7 +44,8 @@ def sample_fixtures(tmp_path, monkeypatch):
     path.write_text(json.dumps(SAMPLE))
     monkeypatch.setattr(fs, "FIXTURE_PATH", path)
     fs._load.cache_clear()
-    for key in ("SNOWFLAKE_CONNECTION_NAME", "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"):
-        monkeypatch.delenv(key, raising=False)
+    if not os.getenv("FF_LIVE_SNOWFLAKE"):
+        for key in ("SNOWFLAKE_CONNECTION_NAME", "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"):
+            monkeypatch.delenv(key, raising=False)
     yield path
     fs._load.cache_clear()

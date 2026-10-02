@@ -3,9 +3,15 @@ from unittest import mock
 import requests
 from streamlit.testing.v1 import AppTest
 
+from src.retrieval import LiveModeUnavailable
+
 
 def _ask(question, mode="fixture", use_model=False, post_effect=requests.ConnectionError()):
-    with mock.patch("src.ollama_client.requests.post", side_effect=post_effect):
+    # mock st.pills to avoid ButtonGroup serialization bug in AppTest:
+    # selection_mode="single" defaults value to None which is not iterable,
+    # crashing get_widget_states() on subsequent .run() calls.
+    with mock.patch("src.ollama_client.requests.post", side_effect=post_effect), \
+         mock.patch("streamlit.pills", return_value=None):
         at = AppTest.from_file("app.py", default_timeout=30)
         at.run()
         at.session_state["mode"] = mode
@@ -50,9 +56,11 @@ def test_unknown_company_in_fixture_mode_is_recoverable():
 
 
 def test_live_mode_fails_gracefully_and_recovers():
-    at = _ask("Apple revenue 2022 to 2023", mode="live")
-    assert not at.exception
-    assert any("fixture mode" in e.value for e in at.error)
-    recover = next(b for b in at.button if "Switch to fixture mode" in b.label)
-    recover.click().run()
-    assert at.session_state["mode"] == "fixture" and not at.exception
+    with mock.patch("src.snowflake_client.fetch_live_evidence", side_effect=LiveModeUnavailable("Live mode unavailable")):
+        at = _ask("Apple revenue 2022 to 2023", mode="live")
+        assert not at.exception
+        assert any("fixture mode" in e.value for e in at.error)
+        recover = next(b for b in at.button if "Switch to fixture mode" in b.label)
+        recover.click().run()
+        assert at.session_state["mode"] == "fixture" and not at.exception
+
