@@ -32,6 +32,16 @@ def md(text: str) -> str:
 st.title(":material/fact_check: FilingForensics")
 st.caption("Evidence-first SEC filing review. Not investment, legal, or compliance advice.")
 
+def use_fixture_mode() -> None:
+    st.session_state.mode = "fixture"
+
+
+@st.cache_data(ttl=3600, max_entries=8, show_spinner=False)
+def load_live_evidence(old_year: int, new_year: int):
+    """Cache live results so reruns don't reconnect (or re-prompt OAuth). Failures are not cached."""
+    return get_evidence("live", old_year, new_year)
+
+
 with st.sidebar:
     st.header("Controls")
     company = st.selectbox("Company", ["Apple Inc. (CIK 0000320193)"])
@@ -43,7 +53,10 @@ with st.sidebar:
 if mode == "fixture":
     st.info("Fixture mode — using verified sample evidence", icon=":material/inventory_2:")
 else:
-    st.warning("Live mode — querying Snowflake", icon=":material/cloud:")
+    st.warning(
+        "Live mode — read-only queries against SNOWFLAKE_PUBLIC_DATA_FREE (credentials from environment)",
+        icon=":material/cloud:",
+    )
 
 if not run and "result" not in st.session_state:
     st.markdown("Choose a question in the sidebar and click **Analyze**.")
@@ -52,9 +65,14 @@ if not run and "result" not in st.session_state:
 if run:
     old_year, new_year = QUESTIONS[question]
     try:
-        bundle = get_evidence(mode)
+        if mode == "live":
+            with st.spinner("Querying Snowflake (text and metrics separately)..."):
+                bundle = load_live_evidence(old_year, new_year)
+        else:
+            bundle = get_evidence("fixture")
     except LiveModeUnavailable as exc:
         st.error(str(exc), icon=":material/error:")
+        st.button("Switch to fixture mode", icon=":material/inventory_2:", on_click=use_fixture_mode)
         st.stop()
     try:
         change = revenue_change(bundle.metrics, old_year, new_year)
@@ -72,6 +90,11 @@ question, bundle, change, model_answer = st.session_state.result
 with st.container(border=True):
     st.subheader("Answer")
     st.markdown(f"**{change.summary}**")
+    st.badge(
+        "Live Snowflake evidence" if bundle.mode == "live" else "Fixture evidence",
+        icon=":material/cloud:" if bundle.mode == "live" else ":material/inventory_2:",
+        color="green" if bundle.mode == "live" else "blue",
+    )
     with st.container(horizontal=True):
         st.metric(f"FY{change.old.fiscal_year} revenue", format_usd_billions(change.old.value))
         st.metric(

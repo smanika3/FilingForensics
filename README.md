@@ -10,7 +10,7 @@ Not investment, legal, or compliance advice.
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ollama pull qwen3.5:2b          # once; app still works if Ollama is down
-.venv/bin/python -m pytest -q   # 21 passed, 1 skipped
+.venv/bin/python -m pytest -q   # 28 passed, 2 skipped
 .venv/bin/streamlit run app.py  # http://localhost:8501
 ```
 
@@ -19,6 +19,20 @@ In the sidebar keep **Data mode = fixture**, leave **Explain with local model** 
 Optional live Ollama smoke test: `FF_LIVE_OLLAMA=1 .venv/bin/python -m pytest -q -s tests/test_ollama_client.py::test_live_ollama_smoke`
 
 Configuration (all optional) is documented in `.env.example`. Never commit `.env`.
+
+## Live Snowflake mode (optional)
+
+Live mode runs two independent, read-only, parameterized queries against `SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE` and normalizes rows into the same contracts as fixture mode. Credentials come only from the environment:
+
+```bash
+# reuse a named connection from ~/.snowflake/connections.toml (no secrets in the repo)
+SNOWFLAKE_CONNECTION_NAME=<your-connection> .venv/bin/streamlit run app.py
+# or: SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER (+ SNOWFLAKE_PASSWORD or SNOWFLAKE_AUTHENTICATOR; default externalbrowser)
+```
+
+Select **Data mode = live** and click **Analyze**. Results are cached for an hour so reruns don't reconnect. If credentials are missing or the connection fails, the app shows the error and a **Switch to fixture mode** button.
+
+Live test: `FF_LIVE_SNOWFLAKE=1 SNOWFLAKE_CONNECTION_NAME=<conn> .venv/bin/python -m pytest -q -s tests/test_snowflake_client.py::test_live_snowflake`
 
 ## Expected result
 
@@ -36,7 +50,7 @@ Narrative evidence: Apple 10-K `0000320193-23-000106`, filed 2023-11-03, PART II
 Streamlit (app.py)  — single local process, no separate backend
   ├── src/retrieval.py      text and metrics fetched independently (no text×metric join)
   │     ├── src/fixtures.py         verified Apple evidence (always available)
-  │     └── live Snowflake mode     optional Stage 4, not implemented → graceful error
+  │     └── src/snowflake_client.py optional live mode: read-only, parameterized, env-configured
   ├── src/calculations.py   deterministic change + validation (missing/duplicate/non-USD/segment/non-adjacent)
   ├── src/models.py         typed evidence objects, USD formatting
   ├── src/ollama_client.py  localhost-only Ollama call: think=false, temperature 0, JSON format, timeout
@@ -57,7 +71,8 @@ Streamlit (app.py)  — single local process, no separate backend
 | 2 | Fixture mode, Ollama unavailable | Warning + deterministic answer, no crash | `tests/test_app.py::test_model_failure_does_not_crash`; real closed port → `Ollama unavailable at http://127.0.0.1:11999` |
 | 3 | Missing metric row | `EvidenceError: FY2022: no total annual revenue row` shown | `tests/test_calculations.py::test_missing_year_rejected` |
 | 4 | Duplicate metric row | `EvidenceError: ... duplicate total annual revenue rows` | `tests/test_calculations.py::test_duplicate_row_rejected` |
-| 5 | Live mode unavailable | Visible error telling user to switch to fixture mode | `tests/test_app.py::test_live_mode_fails_gracefully` |
+| 5 | Live mode unavailable | Visible error + **Switch to fixture mode** button that recovers | `tests/test_app.py::test_live_mode_fails_gracefully`, `tests/test_snowflake_client.py` |
+| + | Live mode with valid credentials | Same −$11,043,000,000 result from Snowflake | `test_live_snowflake` + browser run (model 21.9s on 8,000-char live MD&A) |
 
 ## Demo sequence
 
@@ -75,6 +90,7 @@ Streamlit (app.py)  — single local process, no separate backend
 - Single preset: Apple, total net sales, FY2022 vs FY2023.
 - Metric rows come from later 10-K filings (comparative periods), so their accessions differ from the MD&A filing.
 - FY2023 had 53 weeks vs 52 for FY2022.
-- Live Snowflake mode is not implemented (optional Stage 4).
+- Live mode sends the first 8,000 MD&A characters to the model (~22s vs ~14s in fixture mode).
+- OAuth/SSO may open a browser login on first live connection.
 - The model's own citation list usually omits the MD&A accession; the deterministic provenance section always lists all three.
 - ~14s model latency on `qwen3.5:2b`.

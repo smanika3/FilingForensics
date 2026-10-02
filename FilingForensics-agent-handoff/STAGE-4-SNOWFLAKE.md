@@ -62,7 +62,16 @@ stage-4: add optional Snowflake live retrieval
 
 ## Implementation status
 
-- Status: `PENDING`
-- Last agent: none
-- Notes: Snowflake SQL was verified manually before coding.
-- Next action: implement the optional connector only after fixture UI works.
+- Status: `DONE`
+- Date/time: 2026-10-02
+- Last agent: Cortex Code (claude-opus-5-5)
+- Files: src/snowflake_client.py (new), src/retrieval.py (live dispatch, lazy import, text_rows), app.py (cached live load, live banner/badge, Switch-to-fixture button), tests/test_snowflake_client.py (new), tests/test_app.py (recovery), requirements.txt (+snowflake-connector-python[secure-local-storage]), .env.example, README.md
+- Auth: SNOWFLAKE_CONNECTION_NAME (reuses ~/.snowflake/connections.toml) or SNOWFLAKE_ACCOUNT+USER with PASSWORD/AUTHENTICATOR (default externalbrowser). DB/schema validated as identifiers; all values bound via %(name)s.
+- Commands:
+  - `.venv/bin/python -m pytest -q` (Snowflake env unset) -> 28 passed, 2 skipped
+  - `FF_LIVE_SNOWFLAKE=1 SNOWFLAKE_CONNECTION_NAME=vlwhdrb-kb51087 .venv/bin/python -m pytest -q -s tests/test_snowflake_client.py::test_live_snowflake` -> passed (12.6s incl. OAuth), rows text=1 metric=2, change -11043000000, -2.8005%
+  - Browser: `SNOWFLAKE_CONNECTION_NAME=vlwhdrb-kb51087 .venv/bin/streamlit run app.py`, live mode -> "Live Snowflake evidence" badge, exact result, debug shows both SQL statements, model ok in 21.85s
+- Live tested: yes, account VLWHDRB-KB51087, user smanika3, authenticator oauth_authorization_code.
+- Account-specific notes: connector warns ~/.snowflake/connections.toml has loose permissions (`chmod 0600` recommended); OAuth opens browser login on first connect (keyring extra caches tokens).
+- Known limitations: live MD&A text is 8,000 chars -> ~22s model latency (30s timeout). Apple preset only.
+- Next action: none required. Fixture mode remains the default demo path.

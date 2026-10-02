@@ -4,12 +4,12 @@ This file is the handoff memory. Update it after every stage and every important
 
 ## Overall status
 
-- Current stage: `COMPLETE` (MVP; Stage 4 optional)
+- Current stage: `COMPLETE` (MVP + optional Stage 4 live mode)
 - Stage 0: `DONE`
 - Stage 1: `DONE`
 - Stage 2: `DONE`
 - Stage 3: `DONE`
-- Stage 4: `OPTIONAL_PENDING`
+- Stage 4: `DONE` (live mode tested)
 - Stage 5: `DONE`
 
 Critical path: `STAGE-0 → STAGE-1 → STAGE-2 → STAGE-3 → STAGE-5`
@@ -19,8 +19,8 @@ Stage 4 is optional and must not block the localhost MVP.
 ## Last checkpoint
 
 - Date/time: 2026-10-02
-- Commit: `stage-5: finalize demo and submission evidence`
-- Summary: MVP complete. README with run/demo instructions and five-case smoke checklist. Clean-shell launch, real Ollama-down fallback, and secret scan verified.
+- Commit: `stage-4: add optional Snowflake live retrieval`
+- Summary: Optional live Snowflake mode added and verified against VLWHDRB-KB51087 (exact FY2022/FY2023 values). Fixture mode unchanged and still default; 28 tests pass with Snowflake env unset. Stage 5 stays DONE (README updated for live mode). Previous stages pushed to origin/main.
 
 ## Demo instructions
 
@@ -28,6 +28,7 @@ Stage 4 is optional and must not block the localhost MVP.
 .venv/bin/pip install -r requirements.txt   # if .venv missing: python3 -m venv .venv first
 .venv/bin/python -m pytest -q
 .venv/bin/streamlit run app.py              # http://localhost:8501, fixture mode, click Analyze
+SNOWFLAKE_CONNECTION_NAME=vlwhdrb-kb51087 .venv/bin/streamlit run app.py   # optional live mode
 ```
 
 Demo sequence and limitations: see root `README.md`.
@@ -67,4 +68,4 @@ Demo sequence and limitations: see root `README.md`.
 
 ## Next action
 
-MVP is complete. Only implement `STAGE-4-SNOWFLAKE.md` (optional live mode) if the user explicitly requests it; it must not break fixture mode.
+All stages complete. Stage 4 commit is local only; push when the user asks.

@@ -29,9 +29,13 @@ def test_model_failure_does_not_crash():
     assert any("Model explanation unavailable" in w.value for w in at.warning)
 
 
-def test_live_mode_fails_gracefully():
+def test_live_mode_fails_gracefully(monkeypatch):
+    for key in ("SNOWFLAKE_CONNECTION_NAME", "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"):
+        monkeypatch.delenv(key, raising=False)
     at = _app()
     at.session_state["mode"] = "live"
     at.sidebar.button[0].click().run()
     assert not at.exception
     assert any("fixture mode" in e.value for e in at.error)
+    at.button[0].click().run()  # "Switch to fixture mode" recovers
+    assert at.session_state["mode"] == "fixture" and not at.exception
