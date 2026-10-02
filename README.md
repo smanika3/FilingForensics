@@ -1,96 +1,158 @@
 # FilingForensics
 
-Evidence-first SEC filing review. FilingForensics answers a narrow filing question — *how did Apple's total revenue change from FY2022 to FY2023, and what does the MD&A say about it?* — and shows the evidence, deterministic calculation, provenance, and limitations behind the answer. A local open-weight model (Qwen via Ollama) only explains the supplied evidence; it is never the source of truth.
+**Evidence-First SEC 10-K Filing Intelligence & Financial Verification Engine**
 
-Not investment, legal, or compliance advice.
+FilingForensics answers complex natural-language questions about public company annual reports (SEC Forms 10-K) by pairing **deterministic arithmetic** with **strictly cited narrative evidence**. 
 
-## Quick start (fixture mode, no credentials)
+Unlike standard LLM applications that rely on generative models to extract numbers and do arithmetic (frequently causing subtle hallucinations), FilingForensics enforces an architectural boundary:
+* **All numbers and percentage changes are computed deterministically in Python** from raw XBRL facts.
+* **A local open-weight language model (Qwen 2.5 via Ollama) is used solely to summarize and explain the verified narrative evidence** (Management's Discussion & Analysis — Part II, Item 7).
+* **Every fact, table, and explanation includes SEC Accession Number (ADSH) citations** back to the underlying 10-K filings.
+
+*Not investment, legal, or compliance advice.*
+
+---
+
+## Capabilities & Highlights
+
+* **Any-Company Support:** 
+  * 10 curated tech and industry leaders with built-in aliases (Apple, Microsoft, NVIDIA, Amazon, Alphabet/Google, Meta, Tesla, JPMorgan Chase, Coca-Cola, Netflix).
+  * In Live Mode, queries any public SEC filer using dynamic ticker/name resolution against SEC CIK indices.
+* **9 Supported Financial Metrics:** 
+  * Full-statement coverage across Income Statement (Revenue, Net Income, Gross Profit, Operating Income, R&D), Balance Sheet (Total Assets, Total Liabilities), Cash Flow (Operating Cash Flow), and Per-Share Facts (Diluted EPS).
+* **Natural Language Parsing:** 
+  * Hybrid rule-based parsing (<1ms) with local LLM fallback for multi-clause questions, synonyms, and multi-year comparisons.
+* **Preserved Financial Tables:** 
+  * Extracts Part II, Item 7 (MD&A) and renders structured HTML financial tables natively in Streamlit with merged currency and parenthetical negative formatting.
+* **Dual Execution Modes:** 
+  * **Offline Fixture Mode:** Instant, air-gapped demo mode using verified multi-year snapshots (no credentials required).
+  * **Live Snowflake Mode:** Direct, read-only parameterized queries against `SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE`.
+* **Zero Cloud LLM Dependency:** 
+  * Runs 100% locally via Ollama (`qwen3.5:2b` on localhost). Zero financial queries or filing text are sent to third-party model APIs.
+
+---
+
+## Quickstart (Offline Fixture Mode)
+
+Get started immediately with zero credentials:
 
 ```bash
+# 1. Clone repository and create virtual environment
+git clone https://github.com/smanika3/FilingForensics.git
+cd FilingForensics
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-ollama pull qwen3.5:2b          # once; app still works if Ollama is down
-.venv/bin/python -m pytest -q   # 28 passed, 2 skipped
-.venv/bin/streamlit run app.py  # http://localhost:8501
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Pull local explanation model (optional; deterministic math works without it)
+ollama pull qwen3.5:2b
+
+# 3. Run test suite
+pytest -q    # 55 passed, 3 skipped
+
+# 4. Launch web application
+streamlit run app.py
 ```
 
-In the sidebar keep **Data mode = fixture**, leave **Explain with local model** on, and click **Analyze**. The model explanation takes ~14s on `qwen3.5:2b`.
+Open `http://localhost:8501`. Type a query (e.g. *"How did Apple's revenue change from FY2022 to FY2023?"*) or click any curated company pill.
 
-Optional live Ollama smoke test: `FF_LIVE_OLLAMA=1 .venv/bin/python -m pytest -q -s tests/test_ollama_client.py::test_live_ollama_smoke`
+---
 
-Configuration (all optional) is documented in `.env.example`. Never commit `.env`.
+## Live Snowflake Mode
 
-## Live Snowflake mode (optional)
+Live mode queries live 10-K filings and MD&A narratives directly from Snowflake Marketplace's free SEC dataset (`SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE`).
 
-Live mode runs two independent, read-only, parameterized queries against `SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE` and normalizes rows into the same contracts as fixture mode. Credentials come only from the environment:
+### Authentication Setup
+
+FilingForensics supports `.env` configuration as well as automatic discovery of connections in `~/.snowflake/connections.toml`:
 
 ```bash
-# reuse a named connection from ~/.snowflake/connections.toml (no secrets in the repo)
-SNOWFLAKE_CONNECTION_NAME=<your-connection> .venv/bin/streamlit run app.py
-# or: SNOWFLAKE_ACCOUNT + SNOWFLAKE_USER (+ SNOWFLAKE_PASSWORD or SNOWFLAKE_AUTHENTICATOR; default externalbrowser)
+# Create a .env file (already included in .gitignore)
+cp .env.example .env
 ```
 
-Select **Data mode = live** and click **Analyze**. Results are cached for an hour so reruns don't reconnect. If credentials are missing or the connection fails, the app shows the error and a **Switch to fixture mode** button.
+Set either:
+1. **Named Connection (Recommended):**
+   ```bash
+   SNOWFLAKE_CONNECTION_NAME=vlwhdrb-kb51087
+   ```
+2. **Direct Credentials:**
+   ```bash
+   SNOWFLAKE_ACCOUNT=<account_identifier>
+   SNOWFLAKE_USER=<username>
+   # Optional: defaults to externalbrowser SSO if password is not provided
+   SNOWFLAKE_AUTHENTICATOR=externalbrowser
+   ```
 
-Live test: `FF_LIVE_SNOWFLAKE=1 SNOWFLAKE_CONNECTION_NAME=<conn> .venv/bin/python -m pytest -q -s tests/test_snowflake_client.py::test_live_snowflake`
+### Running Live Queries
+Switch the sidebar toggle to **Data mode = live** or pass `FF_MODE=live`:
 
-## Expected result
+```bash
+streamlit run app.py
+```
 
-| | Value | Source accession | Period |
-|---|---|---|---|
-| FY2022 net sales | $394,328,000,000 | 0000320193-24-000123 | 2021-09-26 → 2022-09-24 |
-| FY2023 net sales | $383,285,000,000 | 0000320193-25-000079 | 2022-09-25 → 2023-09-30 |
-| Change | **−$11,043,000,000 (−2.8005%)** | computed in Python | |
+Try live queries for any company or year:
+* *"Compare Google's revenue from 2023 to 2024"*
+* *"Microsoft net income 2023 vs 2024"*
+* *"What was NVIDIA's diluted EPS in the latest year?"*
 
-Narrative evidence: Apple 10-K `0000320193-23-000106`, filed 2023-11-03, PART II Item 7 (MD&A): *"total net sales decreased 3% or $11.0 billion during 2023 compared to 2022."*
+---
 
-## Architecture
+## Supported Financial Metrics
+
+| Metric Key | Metric Name | Category | Primary XBRL Tags |
+| :--- | :--- | :--- | :--- |
+| `revenue` | Revenue / Net Sales | Income Statement | `RevenueFromContractWithCustomerExcludingAssessedTax`, `Revenues`, `SalesRevenueNet` |
+| `net_income` | Net Income / Profit | Income Statement | `NetIncomeLoss`, `ProfitLoss` |
+| `gross_profit` | Gross Profit | Income Statement | `GrossProfit` |
+| `operating_income` | Operating Income / EBIT | Income Statement | `OperatingIncomeLoss` |
+| `rnd` | Research & Development | Income Statement | `ResearchAndDevelopmentExpense` |
+| `eps_diluted` | Diluted EPS | Per-Share Fact | `EarningsPerShareDiluted` |
+| `operating_cash_flow` | Operating Cash Flow | Cash Flow Statement | `NetCashProvidedByUsedInOperatingActivities` |
+| `total_assets` | Total Assets | Balance Sheet | `Assets` |
+| `total_liabilities` | Total Liabilities | Balance Sheet | `Liabilities` |
+
+---
+
+## Architecture & Codebase Map
 
 ```text
-Streamlit (app.py)  — single local process, no separate backend
-  ├── src/retrieval.py      text and metrics fetched independently (no text×metric join)
-  │     ├── src/fixtures.py         verified Apple evidence (always available)
-  │     └── src/snowflake_client.py optional live mode: read-only, parameterized, env-configured
-  ├── src/calculations.py   deterministic change + validation (missing/duplicate/non-USD/segment/non-adjacent)
-  ├── src/models.py         typed evidence objects, USD formatting
-  ├── src/ollama_client.py  localhost-only Ollama call: think=false, temperature 0, JSON format, timeout
-  └── src/answer_schema.py  tolerant JSON parsing; structured fallback on any failure
+app.py                    Streamlit UI: centered landing, live telemetry, and results
+src/
+  ├── config.py           Environment config and automatic .env loading
+  ├── query_parser.py     Hybrid regex rules + local LLM question parser
+  ├── companies.py        Curated company directory and SEC ticker/alias resolution
+  ├── metrics.py          Metric catalog, XBRL priority tags, and keywords
+  ├── retrieval.py        EvidenceBundle contracts and mode dispatching
+  ├── fixture_store.py    Offline snapshot loader and encoder
+  ├── snowflake_client.py Live read-only parameterized Snowflake client & connection resolver
+  ├── calculations.py     Deterministic change arithmetic and validation checks
+  ├── mdna.py             Part II Item 7 parser, table extractor, and relevance ranker
+  ├── models.py           Immutable dataclasses (MetricEvidence, TextEvidence, MetricChange)
+  ├── ollama_client.py    Localhost Ollama caller with timeout and prompt construction
+  └── answer_schema.py    Tolerant JSON schema parser with graceful fallback
+scripts/
+  └── refresh_fixtures.py Multi-company multi-metric fixture refresh snapshot tool
+tests/                    55 automated tests (unit, app flow, calculations, live Snowflake)
 ```
 
-### Roles
+---
 
-- **Snowflake source:** `SNOWFLAKE_PUBLIC_DATA_FREE.PUBLIC_DATA_FREE` (SEC_CORPORATE_REPORT_INDEX, SEC_CORPORATE_REPORT_ITEM_ATTRIBUTES, SEC_METRICS_TIMESERIES). Fixture values were verified against this source; the MD&A excerpt was retrieved read-only by Cortex Code.
-- **Cortex Code (CoCo):** schema/query discovery, verification of the Apple metric rows and MD&A filing, and staged implementation of this repo (see `FilingForensics-agent-handoff/`).
-- **Open-weight model:** `qwen3.5:2b` served locally by Ollama at `127.0.0.1:11434`. Non-localhost hosts are refused. The model receives the deterministic result as authoritative and only writes the explanation.
+## Integrity & Anti-Hallucination Guardrails
 
-## Five-case smoke checklist
+1. **Independent Filing Isolation:** Metrics are drawn directly from each year's primary 10-K filing to avoid distortion from subsequent revisions or restatements across filings.
+2. **Period Matching & Units:** Prevents comparing mismatched durations (e.g. 1 quarter vs 4 quarters) or mixed currencies.
+3. **Strict Model Grounding:** The prompt provides pre-calculated figures as authoritative facts. The model is temperature-locked (`temperature=0.0`) with `think=false` and must strictly cite the provided accessions.
+4. **Resilient Fallback:** If the local model is offline or produces malformed JSON, the application automatically displays the deterministic calculation and narrative evidence tables with an explanatory warning.
 
-| # | Case | Expected | Verified by |
-|---|---|---|---|
-| 1 | Fixture mode, normal evidence | −$11.04B / −2.8% answer, evidence, provenance, model explanation | `tests/test_app.py::test_fixture_mode_without_model` + manual browser run with live Qwen (14.3s) |
-| 2 | Fixture mode, Ollama unavailable | Warning + deterministic answer, no crash | `tests/test_app.py::test_model_failure_does_not_crash`; real closed port → `Ollama unavailable at http://127.0.0.1:11999` |
-| 3 | Missing metric row | `EvidenceError: FY2022: no total annual revenue row` shown | `tests/test_calculations.py::test_missing_year_rejected` |
-| 4 | Duplicate metric row | `EvidenceError: ... duplicate total annual revenue rows` | `tests/test_calculations.py::test_duplicate_row_rejected` |
-| 5 | Live mode unavailable | Visible error + **Switch to fixture mode** button that recovers | `tests/test_app.py::test_live_mode_fails_gracefully`, `tests/test_snowflake_client.py` |
-| + | Live mode with valid credentials | Same −$11,043,000,000 result from Snowflake | `test_live_snowflake` + browser run (model 21.9s on 8,000-char live MD&A) |
+---
 
-## Demo sequence
+## Testing
 
-1. Show the CoCo schema/query work (the read-only SEC queries in `FilingForensics-agent-handoff/CODING-AGENT-HANDOFF.md`).
-2. Show the installed `SNOWFLAKE_PUBLIC_DATA_FREE` SEC source in Snowsight.
-3. Run `.venv/bin/streamlit run app.py` and open http://localhost:8501.
-4. Select the Apple revenue question and click **Analyze**.
-5. Point to the deterministic calculation line under the answer.
-6. Expand **Narrative evidence** and **Provenance and limitations**.
-7. Explain that Qwen runs locally through Ollama (caption shows model + latency; **Debug** shows raw JSON).
-8. Show the limitations list and the non-advice boundary.
+```bash
+# Run standard offline test suite (55 tests)
+.venv/bin/pytest tests/
 
-## Known limitations
-
-- Single preset: Apple, total net sales, FY2022 vs FY2023.
-- Metric rows come from later 10-K filings (comparative periods), so their accessions differ from the MD&A filing.
-- FY2023 had 53 weeks vs 52 for FY2022.
-- Live mode sends the first 8,000 MD&A characters to the model (~22s vs ~14s in fixture mode).
-- OAuth/SSO may open a browser login on first live connection.
-- The model's own citation list usually omits the MD&A accession; the deterministic provenance section always lists all three.
-- ~14s model latency on `qwen3.5:2b`.
+# Run live Snowflake integration tests (requires active Snowflake connection)
+FF_LIVE_SNOWFLAKE=1 .venv/bin/pytest tests/test_snowflake_client.py -k test_live_snowflake
+```
