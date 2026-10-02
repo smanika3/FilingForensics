@@ -58,7 +58,13 @@ stage-1: add evidence fixtures and deterministic calculations
 
 ## Implementation status
 
-- Status: `PENDING`
-- Last agent: none
-- Notes: not started
-- Next action: implement models, fixtures, calculations, and tests.
+- Status: `DONE`
+- Date/time: 2026-10-02
+- Last agent: Cortex Code (claude-opus-5-5)
+- Files created: src/models.py, src/fixtures.py, src/calculations.py, tests/test_calculations.py, tests/test_fixtures.py
+- Environment: `.venv/` (Python 3.9.6, gitignored) with requirements.txt installed (streamlit 1.50.0, requests 2.32.5, pytest 8.4.2). Use `.venv/bin/python`.
+- Commands: `.venv/bin/python -m pytest -q` → `10 passed in 0.01s`
+- Tests: absolute change, percent change (±1e-3), summary/formatting, missing year, duplicate row, non-USD, segment row, non-adjacent periods, fixture provenance.
+- Notes: MD&A excerpt pulled read-only from Snowflake (ADSH 0000320193-23-000106, PART II Item 7) and stored verbatim in src/fixtures.py.
+- Known limitations: Apple FY2022→FY2023 preset only.
+- Next action: Stage 2 (Ollama client + answer schema).

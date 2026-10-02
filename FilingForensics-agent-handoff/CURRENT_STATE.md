@@ -4,10 +4,10 @@ This file is the handoff memory. Update it after every stage and every important
 
 ## Overall status
 
-- Current stage: `STAGE-1`
+- Current stage: `STAGE-2`
 - Stage 0: `DONE`
-- Stage 1: `IN_PROGRESS`
-- Stage 2: `PENDING`
+- Stage 1: `DONE`
+- Stage 2: `IN_PROGRESS`
 - Stage 3: `PENDING`
 - Stage 4: `OPTIONAL_PENDING`
 - Stage 5: `PENDING`
@@ -19,8 +19,8 @@ Stage 4 is optional and must not block the localhost MVP.
 ## Last checkpoint
 
 - Date/time: 2026-10-02
-- Commit: `stage-0: initialize resumable project`
-- Summary: Git initialized; scaffold (app.py placeholder, src/config.py, requirements.txt, .env.example, .gitignore, src/, tests/) created. No secrets tracked.
+- Commit: `stage-1: add evidence fixtures and deterministic calculations`
+- Summary: Evidence models, verified Apple fixtures (incl. real MD&A excerpt), deterministic revenue change with validation (missing/duplicate/non-USD/segment/non-adjacent), 10 unit tests passing.
 
 ## Verified external facts
 
@@ -41,8 +41,9 @@ Stage 4 is optional and must not block the localhost MVP.
 - `ollama list` showed `qwen3.5:2b` installed.
 - Local Ollama smoke test passed in approximately 1.35 seconds.
 - Python 3.9.6 (no 3.10+ syntax). `py_compile app.py src/config.py` passed.
+- Virtualenv: `.venv/` (gitignored); run `.venv/bin/pip install -r requirements.txt` to recreate.
+- `.venv/bin/python -m pytest -q` → 10 passed.
 - Streamlit app: placeholder only.
-- Tests: not created.
 
 ## Blockers and decisions
 
@@ -54,4 +55,4 @@ Stage 4 is optional and must not block the localhost MVP.
 
 ## Next action
 
-Read and implement `STAGE-1-CORE-FIXTURE.md`.
+Read and implement `STAGE-2-OLLAMA.md`.
