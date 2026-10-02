@@ -59,6 +59,18 @@ streamlit run app.py
 
 Open `http://localhost:8501`. Type a query (e.g. *"How did Apple's revenue change from FY2022 to FY2023?"*) or click any curated company pill.
 
+### Validated Baseline Walkthrough
+
+| Filing Period | Metric Value | Source Accession | Period Window |
+| :--- | :--- | :--- | :--- |
+| **FY2022 Net Sales** | $394,328,000,000 | `0000320193-22-000108` | 2021-09-26 → 2022-09-24 |
+| **FY2023 Net Sales** | $383,285,000,000 | `0000320193-23-000106` | 2022-09-25 → 2023-09-30 |
+| **Deterministic Change** | **-$11,043,000,000 (-2.80%)** | *Computed in Python* | |
+
+* **Narrative MD&A Evidence:** Apple 10-K `0000320193-23-000106`, filed 2023-11-03, PART II Item 7 (MD&A):
+  > *"Total net sales decreased 3% or $11.0 billion during 2023 compared to 2022..."*
+* **Model Explanation:** `qwen3.5:2b` on localhost synthesizes the explanation in ~14s and cites all verified accessions.
+
 ---
 
 ## Live Snowflake Mode
@@ -83,8 +95,10 @@ Set either:
    ```bash
    SNOWFLAKE_ACCOUNT=<account_identifier>
    SNOWFLAKE_USER=<username>
-   # Optional: defaults to externalbrowser SSO if password is not provided
-   SNOWFLAKE_AUTHENTICATOR=externalbrowser
+   # Headless password auth:
+   SNOWFLAKE_PASSWORD=<password>
+   SNOWFLAKE_AUTHENTICATOR=snowflake
+   # Or omit password for browser SSO (defaults to externalbrowser)
    ```
 
 ### Running Live Queries
