@@ -1,12 +1,15 @@
 # FilingForensics
 
-**Evidence-First SEC 10-K Filing Intelligence & Financial Verification Engine**
+**Evidence-First SEC Filing Analysis MVP**
 
-FilingForensics answers complex natural-language questions about public company annual reports (SEC Forms 10-K) by pairing **deterministic arithmetic** with **strictly cited narrative evidence**. 
+FilingForensics answers natural-language questions about public company annual reports (SEC Forms 10-K) by pairing **deterministic arithmetic** with **strictly cited narrative evidence**. 
+
+The architecture supports broader filings; the validated MVP demonstrates Apple revenue analysis alongside verified multi-company fixtures.
 
 Unlike standard LLM applications that rely on generative models to extract numbers and do arithmetic (frequently causing subtle hallucinations), FilingForensics enforces an architectural boundary:
 * **All numbers and percentage changes are computed deterministically in Python** from raw XBRL facts.
-* **A local open-weight language model (Qwen 2.5 via Ollama) is used solely to summarize and explain the verified narrative evidence** (Management's Discussion & Analysis — Part II, Item 7).
+* **A local open-weight language model (qwen3.5:2b via Ollama) is used solely to summarize and explain the verified narrative evidence** (Management's Discussion & Analysis — Part II, Item 7).
+* **Programmatic Citations:** The application programmatically compiles the verified citation list (Narrative MD&A accession + each metric year accession) directly from verified evidence rather than trusting LLM outputs.
 * **Every fact, table, and explanation includes SEC Accession Number (ADSH) citations** back to the underlying 10-K filings.
 
 *Not investment, legal, or compliance advice.*
@@ -48,7 +51,7 @@ pip install -r requirements.txt
 ollama pull qwen3.5:2b
 
 # 3. Run test suite
-pytest -q    # 55 passed, 3 skipped
+pytest -q    # 56 passed, 3 skipped
 
 # 4. Launch web application
 streamlit run app.py
@@ -133,7 +136,7 @@ src/
   └── answer_schema.py    Tolerant JSON schema parser with graceful fallback
 scripts/
   └── refresh_fixtures.py Multi-company multi-metric fixture refresh snapshot tool
-tests/                    55 automated tests (unit, app flow, calculations, live Snowflake)
+tests/                    56 automated tests (unit, app flow, calculations, live Snowflake)
 ```
 
 ---
@@ -150,7 +153,7 @@ tests/                    55 automated tests (unit, app flow, calculations, live
 ## Testing
 
 ```bash
-# Run standard offline test suite (55 tests)
+# Run standard offline test suite (56 tests)
 .venv/bin/pytest tests/
 
 # Run live Snowflake integration tests (requires active Snowflake connection)

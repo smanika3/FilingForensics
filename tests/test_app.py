@@ -64,3 +64,30 @@ def test_live_mode_fails_gracefully_and_recovers():
         recover.click().run()
         assert at.session_state["mode"] == "fixture" and not at.exception
 
+
+def test_model_citations_programmatically_include_narrative_and_metrics():
+    import json
+
+    payload = json.dumps({
+        "answer": "Apple revenue decreased by $11.04B.",
+        "calculation": "Decreased by 2.8%.",
+        "narrative_evidence": "Overview shows decline.",
+        "citations": ["0000320193-24-000123"],  # LLM omitted MD&A accession
+        "limitations": []
+    })
+    mock_resp = mock.Mock()
+    mock_resp.json.return_value = {"response": payload}
+    mock_resp.raise_for_status = mock.Mock()
+    at = _ask(
+        "How did Apple's revenue change from FY2022 to FY2023?",
+        use_model=True,
+        post_effect=mock.Mock(return_value=mock_resp),
+    )
+    assert not at.exception
+    page = _page(at)
+    assert "Narrative MD&A: `0000320193-23-000106`" in page
+    assert "FY2022 metric:" in page and "FY2023 metric:" in page
+    result = at.session_state["result"]
+    assert "0000320193-23-000106" in result["model"].citations
+
+

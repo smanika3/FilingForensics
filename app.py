@@ -195,6 +195,14 @@ def run_pipeline(question: str, mode: str, use_model: bool) -> None:
                 lambda: synthesize(build_prompt(question, change, bundle.metrics, bundle.text), cfg),
             )
             if model_answer.ok:
+                # Programmatically enforce verified citation list (MD&A + metric filings)
+                verified = []
+                if bundle.text and bundle.text.adsh:
+                    verified.append(bundle.text.adsh)
+                for m in bundle.metrics:
+                    if m.adsh not in verified:
+                        verified.append(m.adsh)
+                model_answer.citations = verified
                 steps.done(f"Explanation ready ({t:.1f}s, {cfg.ollama_model} on localhost)")
             else:
                 steps.warn(f"Model explanation unavailable ({md(model_answer.error or '')}); using the deterministic answer.")
@@ -319,8 +327,13 @@ with st.container(border=True):
         st.markdown(md(model_answer.answer))
         st.markdown(f"**Calculation:** {md(model_answer.calculation)}")
         st.markdown(f"**Narrative evidence:** {md(model_answer.narrative_evidence)}")
-        if model_answer.citations:
-            st.markdown("**Cited:** " + ", ".join(f"`{c}`" for c in model_answer.citations))
+        citations = []
+        if bundle.text and bundle.text.adsh:
+            citations.append(f"Narrative MD&A: `{bundle.text.adsh}`")
+        for m in bundle.metrics:
+            citations.append(f"FY{m.fiscal_year} metric: `{m.adsh}`")
+        if citations:
+            st.markdown("**Cited accessions:** " + " · ".join(citations))
         st.caption(f"{model_answer.model} · {model_answer.latency_s}s · explanation only, not the source of truth")
     else:
         st.warning(
